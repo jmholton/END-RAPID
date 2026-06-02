@@ -19,15 +19,17 @@ def map_rmsd(map_files, ref_file=None, verbose=True):
         print("usage: %s *.map [ref=map]" % sys.argv[0])
         sys.exit(9)
 
-    # Load reference template (first map) for metadata
-    ref_mm = map_manager(file_name=map_files[0])
+    # Load reference template (first map) for metadata and 3-D shape
+    ref_mm   = map_manager(file_name=map_files[0])
+    map_shape = ref_mm.map_data().all()   # e.g. (67, 67, 45)
 
     def load_data(path):
         return np.array(map_manager(file_name=path).map_data(), dtype=np.float64)
 
-    def write_map(data, filename, template_mm):
-        out = template_mm.customized_copy(map_data=flex.double(data.flatten()))
-        out.write_map(file_name=filename)
+    def write_map(data, filename):
+        fd = flex.double(data.flatten())
+        fd.reshape(flex.grid(map_shape))
+        ref_mm.customized_copy(map_data=fd).write_map(file_name=filename)
 
     # Compute or load reference
     if ref_file and os.path.isfile(ref_file):
@@ -35,18 +37,18 @@ def map_rmsd(map_files, ref_file=None, verbose=True):
         print("using reference: %s" % ref_file)
     else:
         print("computing average map from %d inputs" % len(map_files))
-        acc = np.zeros_like(load_data(map_files[0]))
+        acc = np.zeros(load_data(map_files[0]).shape)
         for f in map_files:
             print(f)
             acc += load_data(f)
         ref = acc / len(map_files)
-        write_map(ref, "avg.map", ref_mm)
+        write_map(ref, "avg.map")
         print("avg.map is the average of all maps")
         ref_file = "avg.map"
 
     # Accumulate sum of squared deviations
     n = len(map_files)
-    sumsq = np.zeros_like(ref)
+    sumsq = np.zeros(ref.shape)
     for f in map_files:
         diff = load_data(f) - ref
         print("%s - %s" % (f, ref_file))
@@ -58,7 +60,7 @@ def map_rmsd(map_files, ref_file=None, verbose=True):
     variance = sumsq * scale
     sigma = np.sqrt(np.maximum(variance, 0.0))
 
-    write_map(sigma, "sigma.map", ref_mm)
+    write_map(sigma, "sigma.map")
     print("sigma.map is the rms deviation from %s" % ref_file)
 
     # Print map statistics

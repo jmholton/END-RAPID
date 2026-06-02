@@ -68,11 +68,14 @@ def kick_data(mtzfile="refme.mtz", seed=None, F_label=None, output="kicked.mtz")
                 noise = np.random.normal(0.0, 1.0, len(f_vals)) * sf_vals
                 f_new = np.maximum(f_vals + noise, 0.0)
 
-                # propagate missing flags
                 missing = np.isnan(f_vals) | np.isnan(sf_vals)
-                f_new[missing] = np.nan
+                valid = ~missing
+                f_new[missing] = 0.0  # placeholder for missing positions
 
-                cols[F].set_values(flex.double(f_new))
+                cols[F].set_values(
+                    flex.float(f_new.astype(np.float32)),
+                    flex.bool(valid.tolist())
+                )
 
     mtz_obj.write(file_name=output)
     print("kicked.mtz contains %s from %s modified by rms %s" % (F, mtzfile, SIGF))

@@ -56,34 +56,41 @@ def find_F_SIGF(mtzfile):
     return None, None
 
 
-def fft_map_to_file(mtzfile, F_label, PHI_label, outfile, grid=None):
+def fft_map_to_file(mtzfile, F_label, PHI_label, outfile, grid=None, scale=1.0):
     """FFT a (F, PHI) pair from an MTZ into a CCP4 map (volume-scaled, ASU)."""
     obj = iotbx.mtz.object(file_name=mtzfile)
+    arrays = obj.as_miller_arrays()
+
+    # Find the complex (amplitude+phase) pair
     target = None
-    for arr in obj.as_miller_arrays():
+    for arr in arrays:
         ls = arr.info().label_string()
         if F_label in ls and PHI_label in ls:
             target = arr
             break
-        # Also accept F,PHI stored as separate columns merged into a complex array
-        if F_label in ls:
-            # try amplitude+phase pair
-            target = arr
-    if target is None:
-        raise RuntimeError("Cannot find %s/%s in %s" % (F_label, PHI_label, mtzfile))
 
-    if not hasattr(target, 'phases') and target.is_real_array():
-        # amplitude only — find companion phase column
-        for arr in obj.as_miller_arrays():
+    if target is None:
+        # amplitude and phase stored in separate arrays — combine
+        f_arr = phi_arr = None
+        for arr in arrays:
             ls = arr.info().label_string()
-            if PHI_label in ls:
-                target = target.phase_transfer(arr, deg=True)
-                break
+            if F_label in ls and arr.is_real_array():
+                f_arr = arr
+            if PHI_label in ls and arr.is_real_array():
+                phi_arr = arr
+        if f_arr is None or phi_arr is None:
+            raise RuntimeError("Cannot find %s/%s in %s" % (F_label, PHI_label, mtzfile))
+        target = f_arr.phase_transfer(phi_arr, deg=True)
+
+    if scale != 1.0:
+        target = target.customized_copy(data=target.data() * scale)
 
     fmap = target.fft_map(resolution_factor=0.25)
     fmap.apply_volume_scaling()
-    rmap = fmap.real_map_unpadded()
 
+    # real_map_unpadded() gives the full FFT grid; wrap into map_manager
+    # so downstream code can use map_manager I/O and customized_copy.
+    rmap = fmap.real_map_unpadded()
     mm = map_manager(
         map_data=rmap,
         unit_cell_crystal_symmetry=target.crystal_symmetry(),
@@ -94,28 +101,33 @@ def fft_map_to_file(mtzfile, F_label, PHI_label, outfile, grid=None):
     return mm
 
 
+def _write_map(mm_template, data_np, outfile):
+    """Write a numpy array as a CCP4 map using mm_template for metadata."""
+    shape = mm_template.map_data().all()
+    fd = flex.double(data_np.flatten())
+    fd.reshape(flex.grid(shape))
+    mm_template.customized_copy(map_data=fd).write_map(file_name=outfile)
+
+
 def map_add_offset(infile, offset, outfile):
     """Write infile + offset as outfile."""
     mm = map_manager(file_name=infile)
-    d = np.array(mm.map_data()) + offset
-    mm.customized_copy(map_data=flex.double(d.flatten())).write_map(file_name=outfile)
+    _write_map(mm, np.array(mm.map_data()) + offset, outfile)
 
 
 def map_scale(infile, scale, outfile):
     mm = map_manager(file_name=infile)
-    d = np.array(mm.map_data()) * scale
-    mm.customized_copy(map_data=flex.double(d.flatten())).write_map(file_name=outfile)
+    _write_map(mm, np.array(mm.map_data()) * scale, outfile)
 
 
 def map_ratio(num_file, denom_file, outfile):
     """Write per-voxel num/denom, skipping zero-denominator voxels."""
     mm_n = map_manager(file_name=num_file)
-    mm_d = map_manager(file_name=denom_file)
     n = np.array(mm_n.map_data())
-    d = np.array(mm_d.map_data())
+    d = np.array(map_manager(file_name=denom_file).map_data())
     with np.errstate(divide='ignore', invalid='ignore'):
         ratio = np.where(d != 0, n / d, 0.0)
-    mm_n.customized_copy(map_data=flex.double(ratio.flatten())).write_map(file_name=outfile)
+    _write_map(mm_n, ratio, outfile)
 
 
 def map_stats(mapfile):
@@ -127,15 +139,18 @@ def map_stats(mapfile):
 
 
 def scale_mtz(ref_mtz, ref_label, target_mtz, target_label):
-    """Return least-squares scale s such that s*target ≈ ref (isotropic)."""
-    ref_arr = None
-    tgt_arr = None
-    for arr in mtz_arrays(ref_mtz):
-        if ref_label in arr.info().label_string() and arr.is_real_array():
-            ref_arr = arr; break
-    for arr in mtz_arrays(target_mtz):
-        if target_label in arr.info().label_string() and arr.is_real_array():
-            tgt_arr = arr; break
+    """Return least-squares scale s such that s*target ≈ ref (isotropic).
+    Handles both real and complex (amplitude+phase) miller arrays.
+    """
+    def _find(mtzfile, label):
+        for arr in mtz_arrays(mtzfile):
+            ls = arr.info().label_string()
+            if label in ls:
+                return arr.amplitudes() if not arr.is_real_array() else arr
+        return None
+
+    ref_arr = _find(ref_mtz,    ref_label)
+    tgt_arr = _find(target_mtz, target_label)
     if ref_arr is None or tgt_arr is None:
         return 1.0
     common = ref_arr.common_set(tgt_arr)
@@ -143,8 +158,27 @@ def scale_mtz(ref_mtz, ref_label, target_mtz, target_label):
         return 1.0
     r = common.data().as_numpy_array()
     t = tgt_arr.common_set(ref_arr).data().as_numpy_array()
-    scale = np.dot(r, t) / max(np.dot(t, t), 1e-12)
-    return float(scale)
+    # Use sum-ratio rather than dot-product: the Wilson amplitude distribution
+    # makes dot(r,t)/dot(t,t) ≈ 0.4 instead of the correct ~1.0.
+    # sum(r)/sum(t) = mean(r)/mean(t), matching scaleit's "refine scale" result.
+    return float(r.sum() / max(t.sum(), 1e-12))
+
+
+def extract_fobs_free(src_mtz, dst_mtz):
+    """Write dst_mtz with only FOBS/SIGFOBS and R_FREE_FLAGS from src_mtz.
+    Equivalent to: cad labin E1=FOBS E2=SIGFOBS E3=R_FREE_FLAGS
+    """
+    arrays = mtz_arrays(src_mtz)
+    fobs = next((a for a in arrays
+                 if a.is_xray_amplitude_array() and a.sigmas() is not None), None)
+    free = next((a for a in arrays
+                 if 'FREE' in a.info().label_string().upper()), None)
+    if fobs is None:
+        raise RuntimeError("No Fobs/SigF found in %s" % src_mtz)
+    ds = fobs.as_mtz_dataset(column_root_label='FOBS')
+    if free is not None:
+        ds.add_miller_array(free, column_root_label='R_FREE_FLAGS')
+    ds.mtz_object().write(file_name=dst_mtz)
 
 
 def apply_mtz_scale(mtzfile, scale, outfile):
@@ -154,8 +188,11 @@ def apply_mtz_scale(mtzfile, scale, outfile):
         for d in c.datasets():
             for col in d.columns():
                 if col.type() in ('F', 'G', 'K'):
-                    v = np.array(col.extract_values()) * scale
-                    col.set_values(flex.double(v))
+                    v = np.array(col.extract_values(), dtype=np.float64)
+                    missing = np.isnan(v)
+                    v[missing] = 0.0
+                    scaled = flex.float((v * scale).astype(np.float32))
+                    col.set_values(scaled, flex.bool((~missing).tolist()))
     obj.write(file_name=outfile)
 
 
@@ -193,33 +230,58 @@ def _map_rmsd_here(map_files, ref_file=None):
 
 # ── eff file preprocessing ────────────────────────────────────────────────────
 
-def preprocess_eff(eff_file, out_file):
+def preprocess_eff(eff_file, out_file, strip_data_manager=False):
     """
-    Strip unrecognized Phenix 2.x blocks (e.g. ddr{}) and set volume scaling.
+    Strip unrecognized Phenix 2.x blocks and set volume scaling.
+
+    strip_data_manager=True additionally removes all data_manager {} and
+    refinement.input.{pdb,xray_data} sections so the resulting eff can be
+    used with different input files on the command line (needed for RAPID seeds).
     """
     with open(eff_file) as fh:
         lines = fh.readlines()
 
+    # Tags to skip entirely (including their brace-delimited block)
+    skip_keywords = {'ddr'}
+    if strip_data_manager:
+        skip_keywords.add('data_manager')
+
     cleaned = []
     skip_depth = 0
-    brace_depth = 0
-    skip_keywords = {'ddr'}
+    # Track brace context for refinement.input.pdb / xray_data removal
+    context = []    # stack of (keyword, depth_at_open)
 
     for line in lines:
         opens  = line.count('{')
         closes = line.count('}')
+        word   = line.strip().split()[0] if line.strip() else ''
 
-        if skip_depth == 0:
-            word = line.strip().split()[0] if line.strip() else ''
-            if word in skip_keywords and '{' in line:
-                skip_depth = opens - closes
-                continue
-            cleaned.append(line)
-        else:
+        if skip_depth > 0:
             skip_depth += opens - closes
             if skip_depth <= 0:
                 skip_depth = 0
             continue
+
+        if word in skip_keywords and '{' in line:
+            skip_depth = opens - closes
+            continue
+
+        if strip_data_manager:
+            # Also drop refinement { input { pdb { } } } and xray_data sub-blocks
+            # by tracking context
+            if word == 'pdb' and len(context) >= 2 and context[-1] == 'input' and context[-2] == 'refinement' and '{' in line:
+                skip_depth = opens - closes; continue
+            if word == 'xray_data' and len(context) >= 2 and context[-1] == 'input' and context[-2] == 'refinement' and '{' in line:
+                skip_depth = opens - closes; continue
+
+        # maintain context stack
+        if '{' in line:
+            context.append(word if word else '?')
+        for _ in range(closes):
+            if context:
+                context.pop()
+
+        cleaned.append(line)
 
     # Volume scaling fixes
     out = []
@@ -229,26 +291,54 @@ def preprocess_eff(eff_file, out_file):
             line = 'scale=volume\n'
         elif re.search(r'\bapply\b.*\bscaling\b', s):
             line = 'apply_volume_scaling=True\napply_sigma_scaling=False\n'
-        if 'serial' in s and '=' in s:
-            out.append('serial_format = "%03d"\n')
-        line = line.replace('%d', '%03d')
         out.append(line)
 
     with open(out_file, 'w') as fh:
         fh.writelines(out)
 
 
+# ── atomic Z-sum ──────────────────────────────────────────────────────────────
+
+# Atomic numbers for elements common in macromolecular models
+_ATOMIC_Z = {
+    'H':1,'HE':2,'LI':3,'BE':4,'B':5,'C':6,'N':7,'O':8,'F':9,'NE':10,
+    'NA':11,'MG':12,'AL':13,'SI':14,'P':15,'S':16,'CL':17,'AR':18,
+    'K':19,'CA':20,'SC':21,'TI':22,'V':23,'CR':24,'MN':25,'FE':26,
+    'CO':27,'NI':28,'CU':29,'ZN':30,'GA':31,'GE':32,'AS':33,'SE':34,
+    'BR':35,'KR':36,'RB':37,'SR':38,'Y':39,'ZR':40,'NB':41,'MO':42,
+    'TC':43,'RU':44,'RH':45,'PD':46,'AG':47,'CD':48,'IN':49,'SN':50,
+    'SB':51,'TE':52,'I':53,'XE':54,'CS':55,'BA':56,'W':74,'PT':78,
+    'AU':79,'HG':80,'PB':82,'U':92,
+}
+
+
+def z_sum_vacuum_level(pdbfile):
+    """Compute vacuum level from atomic numbers — equivalent to the shell SFALL Z-sum."""
+    pdb_inp = iotbx.pdb.input(file_name=pdbfile)
+    xrs     = pdb_inp.xray_structure_simple()
+
+    z_sum = 0.0
+    for sc in xrs.scatterers():
+        elem = sc.element_symbol().strip().upper()
+        z = _ATOMIC_Z.get(elem, 0)
+        if z == 0:
+            print("WARNING: unknown element %s, Z=0" % elem)
+        z_sum += z * sc.occupancy
+
+    symops     = xrs.space_group().order_z()
+    vol        = xrs.unit_cell().volume()
+    model_vac  = -(z_sum * symops) / vol
+    print("Z-sum predicted no-solvent vacuum level: %.6f" % model_vac)
+    return model_vac
+
+
 # ── PDB helpers ───────────────────────────────────────────────────────────────
 
 def pdb_cell_sg(pdbfile):
-    """Return (cell_params_tuple, sg_symbol) from CRYST1 record."""
-    with open(pdbfile) as fh:
-        for line in fh:
-            if line.startswith('CRYST1'):
-                cell = tuple(float(line[6+i*9:6+(i+1)*9]) for i in range(6))
-                sg   = line[55:66].strip()
-                return cell, sg
-    raise RuntimeError("No CRYST1 in %s" % pdbfile)
+    """Return (cell_params_tuple, sg_symbol) from a PDB file via cctbx."""
+    pdb_inp = iotbx.pdb.input(file_name=pdbfile)
+    cs = pdb_inp.crystal_symmetry()
+    return tuple(cs.unit_cell().parameters()), str(cs.space_group_info())
 
 
 def set_B_to_80(pdbfile, outfile):
@@ -273,20 +363,37 @@ def has_hydrogens(pdbfile, threshold=0.5):
 
 
 def get_ksol_bsol(logfile):
-    """Extract ksol and bsol from a phenix.refine log."""
+    """Extract ksol and bsol from a phenix.refine log.
+
+    Phenix 2.x writes a per-resolution-bin table ending with a 'kmask' column;
+    the value in the lowest-resolution bin of the last such table is used as ksol.
+    Phenix 1.x writes 'k_sol = X  b_sol = Y' lines.
+    """
     ksol = bsol = None
     with open(logfile) as fh:
-        for line in fh:
-            if 'kmask' in line.lower():
-                # Phenix 1.8+ style: line after "kmask" header has the value
-                pass
-            m = re.search(r'kmask\s*=?\s*([0-9.]+)', line, re.I)
-            if m and ksol is None:
-                ksol = float(m.group(1))
-                bsol = 0.0
-            m2 = re.search(r'k_sol\s*=\s*([0-9.]+).*b_sol\s*=\s*([0-9.]+)', line, re.I)
-            if m2:
-                ksol, bsol = float(m2.group(1)), float(m2.group(2))
+        lines = fh.readlines()
+
+    for i, line in enumerate(lines):
+        # Phenix 2.x: header row "Resolution ... kmask" followed by data rows
+        if 'Resolution' in line and 'kmask' in line:
+            for j in range(i + 1, min(i + 30, len(lines))):
+                parts = lines[j].split()
+                # data rows have a resolution range "lo-hi" as first field
+                if len(parts) >= 6 and '-' in parts[0]:
+                    try:
+                        ksol = float(parts[-1])   # kmask is last column
+                        bsol = 0.0
+                    except ValueError:
+                        pass
+                    break
+                elif not parts or parts[0].startswith('='):
+                    break  # hit next section header
+
+        # Phenix 1.x: k_sol = X  b_sol = Y
+        m = re.search(r'k_sol\s*=\s*([0-9.]+).*b_sol\s*=\s*([0-9.]+)', line, re.I)
+        if m:
+            ksol, bsol = float(m.group(1)), float(m.group(2))
+
     return ksol, bsol
 
 
@@ -417,10 +524,15 @@ def main(args):
     print("bulk solvent params: ksol=%.4f  Bsol=%.1f  Rsolv=%s  Rshrink=%s"
           % (ksol, bsol, rsolv, rshrink))
 
+    phenix_reso = None
     with open(pdbfile) as fh:
         for line in fh:
             if 'RESOLUTION RANGE HIGH' in line:
                 phenix_reso = float(line.split()[-1]) * 0.98
+    if phenix_reso is None:
+        # fall back to cctbx resolution from the MTZ
+        phenix_reso = max(a.d_min() for a in mtz_arrays(mtzfile))
+        print("WARNING: no RESOLUTION RANGE remark; using d_min=%.4f from MTZ" % phenix_reso)
 
     # --- set B=80 and add hydrogens ---
     print("setting all B factors to 80")
@@ -457,9 +569,8 @@ def main(args):
     print("making sfall map for vacuum level reference")
     fft_map_to_file('nobulk.mtz', 'FMODEL', 'PHIFMODEL', 'nobulk.map')
 
-    mm_nb = map_manager(file_name='nobulk.map')
-    model_vac = -float(np.array(mm_nb.map_data()).mean())
-    print("no-solvent mean=0 map vacuum level: %.5f" % model_vac)
+    # --- compute atomic vacuum level from Z-sum (F000 not in diffraction data) ---
+    model_vac = z_sum_vacuum_level('refined.pdb')
 
     # --- fmodel maps ---
     fft_map_to_file('ss.mtz',     'FMODEL', 'PHIFMODEL', 'fmodel_ss.map')
@@ -470,10 +581,7 @@ def main(args):
     nb_data = np.array(map_manager(file_name='nobulk.map').map_data())
     ss_data = np.array(map_manager(file_name='fmodel_ss.map').map_data())
     solvent_data = ss_data - nb_data
-    mm_ref2 = map_manager(file_name='nobulk.map')
-    mm_ref2.customized_copy(
-        map_data=flex.double(solvent_data.flatten())
-    ).write_map(file_name='sharpsolvent.map')
+    _write_map(map_manager(file_name='nobulk.map'), solvent_data, 'sharpsolvent.map')
 
     here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, here)
@@ -523,7 +631,7 @@ def main(args):
 
     # strip eff file for RAPID seeds (remove input file paths)
     if efffile and os.path.isfile(efffile):
-        preprocess_eff(efffile, prefix + '.eff')
+        preprocess_eff(efffile, prefix + '.eff', strip_data_manager=True)
 
     if no_rapid:
         return _finish()
@@ -547,9 +655,8 @@ def main(args):
 
         procs = []
         for seed in seeds:
-            kick_data_bydiff('kickme.mtz', seed=seed, output='kicked_%d.mtz' % seed)
-            import shutil as _sh2
-            _sh2.copy('kicked_%d.mtz' % seed, 'refme_FOFC_%d.mtz' % seed)
+            kick_data_bydiff('kickme.mtz', seed=seed, FC_label='FMODEL', output='kicked_%d.mtz' % seed)
+            extract_fobs_free('kicked_%d.mtz' % seed, 'refme_FOFC_%d.mtz' % seed)
 
             cmd = ('phenix.refine %s.eff refme.pdb refme_FOFC_%d.mtz '
                    'export_final_f_model=True write_geo_file=False write_def_file=False '
@@ -571,12 +678,14 @@ def main(args):
         # scale and FFT each seed map
         for seed in seeds:
             smtz = find_output('seed_%d' % seed, '.mtz')
+            if smtz is None:
+                raise RuntimeError("seed_%d phenix.refine failed — check seed_%d.log" % (seed, seed))
             sc   = scale_mtz('fmodel.mtz', 'FMODEL', smtz, '2FOFCWT')
             print("seed %d scale factor: %.4f" % (seed, sc))
             fft_map_to_file(smtz, '2FOFCWT', 'PH2FOFCWT',
-                            'seed_%d_2FoFc.map' % seed)
+                            'seed_%d_2FoFc.map' % seed, scale=sc)
             fft_map_to_file(smtz, 'FOFCWT',  'PHFOFCWT',
-                            'seed_%d_FoFc.map'  % seed)
+                            'seed_%d_FoFc.map'  % seed, scale=sc)
 
         from map_rmsd import map_rmsd
         map_rmsd(sorted(glob.glob('seed_*_2FoFc.map')), ref_file='2FoFc_scaled.map')
@@ -600,8 +709,7 @@ def main(args):
         procs = []
         for seed in range(1, rapid_itrs + 1):
             _kick('kickme.mtz', seed=seed, output='kicked_sigF_%d.mtz' % seed)
-            import shutil as _sh3
-            _sh3.copy('kicked_sigF_%d.mtz' % seed, 'refme_sigF_%d.mtz' % seed)
+            extract_fobs_free('kicked_sigF_%d.mtz' % seed, 'refme_sigF_%d.mtz' % seed)
 
             cmd = ('phenix.refine %s.eff refme.pdb refme_sigF_%d.mtz '
                    'export_final_f_model=True write_geo_file=False write_def_file=False '
@@ -622,12 +730,14 @@ def main(args):
 
         for seed in range(1, rapid_itrs + 1):
             smtz = find_output('sigF_seed_%d' % seed, '.mtz')
+            if smtz is None:
+                raise RuntimeError("sigF_seed_%d phenix.refine failed — check sigF_seed_%d.log" % (seed, seed))
             sc   = scale_mtz('fmodel.mtz', 'FMODEL', smtz, '2FOFCWT')
             print("sigF seed %d scale factor: %.4f" % (seed, sc))
             fft_map_to_file(smtz, '2FOFCWT', 'PH2FOFCWT',
-                            'sigF_seed_%d_2FoFc.map' % seed)
+                            'sigF_seed_%d_2FoFc.map' % seed, scale=sc)
             fft_map_to_file(smtz, 'FOFCWT',  'PHFOFCWT',
-                            'sigF_seed_%d_FoFc.map'  % seed)
+                            'sigF_seed_%d_FoFc.map'  % seed, scale=sc)
 
         from map_rmsd import map_rmsd
         map_rmsd(sorted(glob.glob('sigF_seed_*_2FoFc.map')), ref_file='2FoFc_scaled.map')

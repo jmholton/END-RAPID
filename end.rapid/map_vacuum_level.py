@@ -15,6 +15,7 @@ from scitbx.array_family import flex
 def find_vacuum_level(mapfile, verbose=True):
     """Return (vacuum, mad) for the given CCP4/MRC map."""
     mm = map_manager(file_name=mapfile)
+    map_shape = mm.map_data().all()
     data = np.array(mm.map_data(), dtype=np.float64)
     n_voxels = data.size
     mean = data.mean()
@@ -88,9 +89,9 @@ def find_vacuum_level(mapfile, verbose=True):
     print("estimated F000 = %.1f" % F000)
 
     # Write offset map (vacuum = 0)
-    offset_data = flex.double((data - vacuum).flatten())
-    mm_out = mm.customized_copy(map_data=offset_data)
-    mm_out.write_map(file_name="vacuum_zero.map")
+    fd = flex.double((data - vacuum).flatten())
+    fd.reshape(flex.grid(map_shape))
+    mm.customized_copy(map_data=fd).write_map(file_name="vacuum_zero.map")
     print("vacuum_zero.map has a vacuum level of zero")
 
     return vacuum, mad

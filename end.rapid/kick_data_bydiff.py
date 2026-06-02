@@ -72,15 +72,22 @@ def kick_data_bydiff(mtzfile="refined.mtz", seed=None,
     f_new = np.maximum(f_vals + noise, 0.0)
 
     missing = np.isnan(f_vals) | np.isnan(fc_vals)
-    f_new[missing] = np.nan
+    valid = ~missing
+    f_new[missing] = 0.0
 
-    all_cols[F].set_values(flex.double(f_new))
+    all_cols[F].set_values(
+        flex.float(f_new.astype(np.float32)),
+        flex.bool(valid.tolist())
+    )
 
-    # Propagate missing: set SIGF absent where F is absent
+    # Propagate missing: mark SIGF absent where F is absent
     if SIGF and SIGF in all_cols:
         sf_vals = np.array(all_cols[SIGF].extract_values(), dtype=np.float64)
-        sf_vals[missing] = np.nan
-        all_cols[SIGF].set_values(flex.double(sf_vals))
+        sf_vals[missing] = 0.0
+        all_cols[SIGF].set_values(
+            flex.float(sf_vals.astype(np.float32)),
+            flex.bool(valid.tolist())
+        )
 
     mtz_obj.write(file_name=output)
     print("kicked.mtz contains %s from %s modified by rms ( %s - %s )" % (F, mtzfile, F, FC))
