@@ -164,13 +164,31 @@ def scale_mtz(ref_mtz, ref_label, target_mtz, target_label):
     return float(r.sum() / max(t.sum(), 1e-12))
 
 
+def _looks_like_fobs(label_string):
+    """True if a miller array label looks like observed amplitudes."""
+    for part in label_string.split(','):
+        s = part.strip().upper().replace('-', '').replace('_', '')
+        if s in ('FOBS', 'FP', 'FMEAS') or s.startswith('FOBS') or s.startswith('FMEAS'):
+            return True
+    return False
+
+
 def extract_fobs_free(src_mtz, dst_mtz):
     """Write dst_mtz with only FOBS/SIGFOBS and R_FREE_FLAGS from src_mtz.
     Equivalent to: cad labin E1=FOBS E2=SIGFOBS E3=R_FREE_FLAGS
+
+    Selects the amplitude array whose name looks like observed data (FOBS, FP, …)
+    rather than relying on column order, which can put K_MASK before FOBS.
     """
     arrays = mtz_arrays(src_mtz)
+    # Prefer arrays whose label looks like observed amplitudes
     fobs = next((a for a in arrays
-                 if a.is_xray_amplitude_array() and a.sigmas() is not None), None)
+                 if _looks_like_fobs(a.info().label_string())
+                 and a.is_xray_amplitude_array() and a.sigmas() is not None), None)
+    # Fall back to first amplitude+sigma array
+    if fobs is None:
+        fobs = next((a for a in arrays
+                     if a.is_xray_amplitude_array() and a.sigmas() is not None), None)
     free = next((a for a in arrays
                  if 'FREE' in a.info().label_string().upper()), None)
     if fobs is None:

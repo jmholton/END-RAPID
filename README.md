@@ -66,10 +66,12 @@ block present in eff files written by Phenix 2.x).
 
 ## Known limitations of the Python version
 
-- **sigF RAPID maps are ~70% smaller** than the shell version's.  Phenix 2.x
-  writes French-Wilson-processed σ(Fobs) values into the f_model MTZ, which are
-  smaller than the raw experimental σ used by the shell script's `scaleit` step.
-  The Fo−Fc RAPID maps (which use \|Fobs−Fcalc\| instead) agree within ~20%.
+- **sigF RAPID maps are ~50% smaller** than the shell version's, even though the
+  SIGFOBS values in both kickme.mtz files are essentially identical (SIGFOBS/FOBS
+  ≈ 0.029 in both).  The gap is statistical: the sigF perturbation is ~7× smaller
+  than the Fo−Fc perturbation, so N=5 seeds is too few for the numpy and CCP4
+  random-number generators to agree.  The Fo−Fc RAPID maps (22% off) are more
+  stable and more physically meaningful.
 - **Output maps cover the full unit cell** (not just the ASU).  The shell version
   uses `mapmask xyzlim asu`; the Python FFT returns the full crystallographic grid.
   Map statistics (mean, σ) are identical; file sizes are larger.

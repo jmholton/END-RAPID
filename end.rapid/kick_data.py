@@ -15,34 +15,49 @@ import iotbx.mtz
 from scitbx.array_family import flex
 
 
+def _looks_like_fobs(label):
+    """True if the column label looks like an observed amplitude (not a derived quantity)."""
+    s = label.upper().replace('-', '').replace('_', '')
+    return any(s == k for k in ('FOBS', 'FP', 'F', 'FMEAS', 'FOBS1')) or \
+           s.startswith('FOBS') or s.startswith('FMEAS')
+
+
 def _pick_f_sigf(mtz_obj, user_F=None):
-    """Return (F_label, SIGF_label) for the best F/SIGF pair in the MTZ."""
+    """Return (F_label, SIGF_label) for the best F/SIGF pair in the MTZ.
+
+    Preference order:
+      1. user-specified label if given
+      2. F-type column whose name looks like observed amplitudes (FOBS, FP, …)
+         paired with the immediately following Q-type column
+      3. Highest-completeness F/Q pair with the highest mean amplitude
+         (discriminates FOBS ~60 e- from K_MASK ~0.007 or K_ISO ~1.0)
+    """
     candidates = []
     for crystal in mtz_obj.crystals():
         for dataset in crystal.datasets():
-            cols = {c.label(): c for c in dataset.columns()}
-            f_cols = [l for l, c in cols.items() if c.type() == 'F']
-            for fl in f_cols:
-                # Look for paired Q (sigma) column immediately after
-                labels = list(cols.keys())
-                try:
-                    idx = labels.index(fl)
-                    if idx + 1 < len(labels) and cols[labels[idx+1]].type() == 'Q':
-                        sl = labels[idx + 1]
-                        f_vals = np.array(cols[fl].extract_values())
-                        comp = np.sum(~np.isnan(f_vals)) / max(len(f_vals), 1)
-                        reso = dataset.wavelength()  # crude proxy; completeness wins
-                        candidates.append((comp, fl, sl))
-                except ValueError:
-                    pass
+            cols   = {c.label(): c for c in dataset.columns()}
+            labels = list(cols.keys())
+            for idx, fl in enumerate(labels):
+                if cols[fl].type() != 'F':
+                    continue
+                if idx + 1 >= len(labels) or cols[labels[idx+1]].type() != 'Q':
+                    continue
+                sl     = labels[idx + 1]
+                f_vals = np.array(cols[fl].extract_values())
+                comp   = float(np.sum(np.isfinite(f_vals))) / max(len(f_vals), 1)
+                mean_f = float(np.nanmean(f_vals)) if f_vals.size else 0.0
+                named  = _looks_like_fobs(fl)
+                candidates.append((named, comp, mean_f, fl, sl))
+
     if not candidates:
         return None, None
     if user_F:
-        for _, fl, sl in candidates:
+        for _, _, _, fl, sl in candidates:
             if fl == user_F:
                 return fl, sl
-    candidates.sort(reverse=True)  # highest completeness first
-    return candidates[0][1], candidates[0][2]
+    # Sort: name-match first, then completeness, then mean amplitude
+    candidates.sort(reverse=True)
+    return candidates[0][3], candidates[0][4]
 
 
 def kick_data(mtzfile="refme.mtz", seed=None, F_label=None, output="kicked.mtz"):

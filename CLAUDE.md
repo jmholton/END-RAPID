@@ -119,14 +119,19 @@ Shell: CCP4 9.0.015 / Phenix 2.1rc2 | Python: phenix.python 2.1rc2
 | `scale_mtz` skips complex arrays | All scale factors = 1.0 (arrays not found) | Call `.amplitudes()` on complex miller arrays before comparing |
 | `scale_mtz` dot-product formula | Scale = 0.42 instead of ~1.07 for Wilson amplitudes | Use `sum(ref)/sum(tgt)` (mean-ratio); dot/dot² ≈ 0.4 for Wilson distributions |
 | `kick_data_bydiff` FC_label not passed | `delta = 0` → RAPID noise = numerical zero | Pass `FC_label='FMODEL'` explicitly (otherwise F = FC = FOBS) |
+| `kick_data` column selection by type+alpha | Perturbs K_MASK (mean 0.007 e-) instead of FOBS (mean 60 e-) | Prefer columns whose label looks like observed amplitudes (FOBS, FP, …); also rank by mean amplitude so derived F-type columns like K_MASK and K_ISOTROPIC don't win alphabetically at equal completeness |
 
 ## Known limitations of the Python version
 
-**sigF RAPID maps (~70% smaller than shell).**  
-Phenix 2.x writes French-Wilson-processed σ(Fobs) in the f_model MTZ.  These
-are smaller than the raw experimental σ the shell script extracts directly from
-`refme.mtz`.  The Fo−Fc RAPID maps, which use |Fobs−Fcalc| as the perturbation
-scale, agree within ~20% and are more physically meaningful anyway.
+**sigF RAPID maps (~50% smaller than shell after all bugs are fixed).**  
+The SIGFOBS values in both Python and shell kickme.mtz are essentially identical
+(mean ratio SIGFOBS/FOBS = 0.029 in both), so the perturbation amplitude is
+the same.  The remaining gap is statistical: sigF perturbation is ~7× smaller
+than FoFc perturbation (σ(F)/F ≈ 0.029 vs |Fo−Fc|/F ≈ 0.20), so 5 seeds is
+insufficient to average out RNG differences between numpy and CCP4's sftools.
+The FoFc RAPID (22% off) is stable at N=5 because the per-seed signal is large
+enough to dominate; the sigF RAPID needs more seeds for the same stability.
+The Fo−Fc RAPID maps are more physically meaningful in any case.
 
 **Maps cover the full unit cell, not the ASU.**  
 The shell uses `mapmask xyzlim asu`; the Python FFT returns the full grid.
