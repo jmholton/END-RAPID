@@ -66,12 +66,13 @@ block present in eff files written by Phenix 2.x).
 
 ## Known limitations of the Python version
 
-- **sigF RAPID maps are ~50% smaller** than the shell version's, even though the
-  SIGFOBS values in both kickme.mtz files are essentially identical (SIGFOBS/FOBS
-  ≈ 0.029 in both).  The gap is statistical: the sigF perturbation is ~7× smaller
-  than the Fo−Fc perturbation, so N=5 seeds is too few for the numpy and CCP4
-  random-number generators to agree.  The Fo−Fc RAPID maps (22% off) are more
-  stable and more physically meaningful.
+- **sigF RAPID maps are ~30% smaller** than the shell version's (Python sigF/FoFc
+  ratio ≈ 0.148, shell ≈ 0.21; both stable over 100 seeds, so this is a real
+  systematic difference).  The shell's `scaleit refine anisotropic` step applies
+  a resolution-dependent B-factor correction to SIGFOBS; the Python version uses
+  a flat isotropic scale that leaves SIGFOBS untouched.  The resulting
+  perturbation profile differs across resolution shells.  The Fo−Fc RAPID maps
+  (22% off) are more physically meaningful and are unaffected by this issue.
 - **Output maps cover the full unit cell** (not just the ASU).  The shell version
   uses `mapmask xyzlim asu`; the Python FFT returns the full crystallographic grid.
   Map statistics (mean, σ) are identical; file sizes are larger.

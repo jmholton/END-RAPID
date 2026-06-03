@@ -123,15 +123,23 @@ Shell: CCP4 9.0.015 / Phenix 2.1rc2 | Python: phenix.python 2.1rc2
 
 ## Known limitations of the Python version
 
-**sigF RAPID maps (~50% smaller than shell after all bugs are fixed).**  
-The SIGFOBS values in both Python and shell kickme.mtz are essentially identical
-(mean ratio SIGFOBS/FOBS = 0.029 in both), so the perturbation amplitude is
-the same.  The remaining gap is statistical: sigF perturbation is ~7× smaller
-than FoFc perturbation (σ(F)/F ≈ 0.029 vs |Fo−Fc|/F ≈ 0.20), so 5 seeds is
-insufficient to average out RNG differences between numpy and CCP4's sftools.
-The FoFc RAPID (22% off) is stable at N=5 because the per-seed signal is large
-enough to dominate; the sigF RAPID needs more seeds for the same stability.
-The Fo−Fc RAPID maps are more physically meaningful in any case.
+**sigF RAPID maps are ~30% smaller than the shell** (Python sigF/FoFc ratio ≈ 0.148,
+shell ratio ≈ 0.21; both stable over 100 seeds).  This is a genuine systematic
+difference, not sampling noise.
+
+The root cause: the shell's `scaleit refine anisotropic` step on kickme.mtz
+applies a resolution-dependent (B-factor) correction that scales SIGFOBS
+differently at different resolutions — high-resolution SIGFOBS values are scaled
+down more than low-resolution ones.  The Python `apply_mtz_scale` applies a flat
+isotropic scale that leaves SIGFOBS untouched entirely.  The resulting
+resolution-weighted SIGFOBS in the shell kickme.mtz differs from the flat
+SIGFOBS in the Python kickme.mtz, producing a systematically different sigF
+perturbation profile across resolution shells.
+
+Since sigF RAPID is less physically meaningful than FoFc RAPID (experimental σ
+values have systematic issues that |Fo−Fc| avoids), and the FoFc RAPID agrees
+within ~22%, this limitation is acceptable for most use cases.  A future fix
+would implement anisotropic scaling of SIGFOBS to match the shell's scaleit step.
 
 **Maps cover the full unit cell, not the ASU.**  
 The shell uses `mapmask xyzlim asu`; the Python FFT returns the full grid.
