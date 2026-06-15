@@ -35,7 +35,7 @@ FFT structure factors→map   CCP4 fft                   cctbx.miller.fft_map()
 Trim map to ASU             CCP4 mapmask                (full unit cell retained)
 Absolute-scale atomic model CCP4 sfall                  Z-sum formula (no CCP4)
 Map statistics              CCP4 mapdump                iotbx.map_manager + numpy
-Scale MTZ amplitudes        CCP4 scaleit                sum(ref)/sum(tgt) formula
+Scale MTZ amplitudes        CCP4 scaleit                scaleit-equivalent k+B fit (NOWT=1)
 Combine MTZ files           CCP4 cad                   iotbx.mtz column ops
 Perturb Fobs                CCP4 sftools RAN_G          numpy.random.normal
 Map RMSD                    CCP4 mapmask + float_mult   iotbx.map_manager + numpy
@@ -118,6 +118,9 @@ Shell: CCP4 9.0.015 / Phenix 2.1rc2 | Python: phenix.python 2.1rc2
 | F000 from FFT mean | `model_vac = 0.0` always (F000 missing from diffraction data) | Use Z-sum formula: `−(sum_j Z_j × occ_j × N_symop) / V_cell` |
 | `scale_mtz` skips complex arrays | All scale factors = 1.0 (arrays not found) | Call `.amplitudes()` on complex miller arrays before comparing |
 | `scale_mtz` dot-product formula | Scale = 0.42 instead of ~1.07 for Wilson amplitudes | Use `sum(ref)/sum(tgt)` (mean-ratio); dot/dot² ≈ 0.4 for Wilson distributions |
+| `scale_mtz` index misalignment | `common_set()` called separately on ref and tgt returns arrays in different index orders (0/16686 matched in testing); r[i] paired with wrong reflection's t[i] | Use `common_sets()` which guarantees alignment |
+| `scale_mtz` wrong initial k | `sum(ref)/sum(tgt)` diverges from scaleit's formula | Use `sqrt(sum(ref²)/sum(tgt²))`; Python initial k now matches scaleit (1.0442) exactly |
+| `scale_mtz` amplitude residuals | Amplitude LS gives wrong k+B vs scaleit | Use scaleit NOWT=1 intensity residuals: D1=0.5*(r²-S2²t²), D2=0.5*(t²-r²/S2²); k now matches scaleit to 0.1% (1.2659 vs 1.265) |
 | `kick_data_bydiff` FC_label not passed | `delta = 0` → RAPID noise = numerical zero | Pass `FC_label='FMODEL'` explicitly (otherwise F = FC = FOBS) |
 | `kick_data` column selection by type+alpha | Perturbs K_MASK (mean 0.007 e-) instead of FOBS (mean 60 e-) | Prefer columns whose label looks like observed amplitudes (FOBS, FP, …); also rank by mean amplitude so derived F-type columns like K_MASK and K_ISOTROPIC don't win alphabetically at equal completeness |
 
@@ -146,10 +149,12 @@ The shell uses `mapmask xyzlim asu`; the Python FFT returns the full grid.
 Density values and statistics are identical; files are larger (16 MB vs 0.8 MB
 for 3ldc at 1.45 Å).
 
-**`scale_mtz` is isotropic.**  
-The shell's `scaleit refine anisotropic` fits an anisotropic B-factor correction
-in addition to an overall scale; the Python version uses only an isotropic scale
-(mean-ratio).  This produces a ~1% systematic difference in the Fobs-scale step.
+**`scale_mtz` now matches scaleit refine isotropic.**
+`scale_mtz` uses the same initial k (`sqrt(sum(FP²)/sum(FPH²))`), the same
+unweighted intensity residuals (scaleit NOWT=1), and `common_sets()` for correct
+index alignment.  Python k=1.2659 matches scaleit k=1.265 to 0.1%; per-map RMS
+matches shell to 0.2%; `correlate.com` gives 1.0000 between Python and shell maps.
+The Fobs kickme.mtz step (anisotropic scaleit) is not yet implemented.
 
 ## Adding new Phenix-incompatible parameters
 

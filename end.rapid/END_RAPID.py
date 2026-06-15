@@ -138,9 +138,28 @@ def map_stats(mapfile):
     print("           Rms deviation from mean density .................  %12g" % d.std())
 
 
-def scale_mtz(ref_mtz, ref_label, target_mtz, target_label):
-    """Return least-squares scale s such that s*target ≈ ref (isotropic).
-    Handles both real and complex (amplitude+phase) miller arrays.
+def scale_mtz(ref_mtz, ref_label, target_mtz, target_label,
+              mode='fit_scaleB_use_scale'):
+    """Return scale factor(s) so that scale × target ≈ ref.
+
+    Mirrors CCP4 scaleit refine isotropic:
+      - Initial k = sqrt(sum(ref²)/sum(tgt²))          [scaleit formula]
+      - Residuals: D1=0.5*(ref²-S2²*tgt²), D2=0.5*(tgt²-ref²/S2²)  [NOWT=1]
+      - S2 = k * exp(-B * sin²θ/λ²)                    [Debye-Waller]
+      - Printed B_scaleit = 4 * B_fit (CCP4 SSQ=sin²θ/λ², so BETA*SSQ*0.25)
+
+    mode:
+      'fit_scale_use_scale'   : sqrt(sum(ref²)/sum(tgt²)) only, return scalar k
+      'fit_scaleB_use_scale'  : fit k+B (like scaleit refine isotropic),
+                                discard B, return scalar k  [DEFAULT]
+      'fit_scaleB_use_scaleB' : fit k+B, return per-reflection numpy array
+                                k × exp(−B × sin²θ/λ²) for all tgt reflections
+
+    Bugs fixed vs old mean-ratio implementation:
+      1. common_sets() instead of separate common_set() calls — the latter
+         returns ref and tgt in different index orders (0/16686 matched in test).
+      2. sqrt(sum(FP²)/sum(FPH²)) matches scaleit's initial k (not sum-ratio).
+      3. Intensity residuals D1/D2 match scaleit NOWT=1 (not amplitude LS).
     """
     def _find(mtzfile, label):
         for arr in mtz_arrays(mtzfile):
@@ -153,15 +172,57 @@ def scale_mtz(ref_mtz, ref_label, target_mtz, target_label):
     tgt_arr = _find(target_mtz, target_label)
     if ref_arr is None or tgt_arr is None:
         return 1.0
-    common = ref_arr.common_set(tgt_arr)
-    if common.size() == 0:
+    # common_sets() returns both arrays with the SAME index order (aligned)
+    common_r, common_t = ref_arr.common_sets(tgt_arr)
+    if common_r.size() == 0:
         return 1.0
-    r = common.data().as_numpy_array()
-    t = tgt_arr.common_set(ref_arr).data().as_numpy_array()
-    # Use sum-ratio rather than dot-product: the Wilson amplitude distribution
-    # makes dot(r,t)/dot(t,t) ≈ 0.4 instead of the correct ~1.0.
-    # sum(r)/sum(t) = mean(r)/mean(t), matching scaleit's "refine scale" result.
-    return float(r.sum() / max(t.sum(), 1e-12))
+    r  = common_r.data().as_numpy_array()
+    t  = common_t.data().as_numpy_array()
+
+    # Initial k: sqrt(sum(ref²)/sum(tgt²)) — scaleit's initial scale formula
+    k0 = float(np.sqrt(np.sum(r**2) / max(np.sum(t**2), 1e-12)))
+
+    if mode == 'fit_scale_use_scale':
+        return k0
+
+    # ── isotropic k+B fit (scaleit refine isotropic, NOWT=1 unweighted) ──────
+    from scipy.optimize import least_squares
+    cs     = ref_arr.crystal_symmetry()
+    M_frac = np.array(cs.unit_cell().fractionalization_matrix()).reshape(3, 3)
+    hkl    = np.array(common_t.indices())
+    h_orth = hkl.astype(float) @ M_frac
+    s2     = np.einsum('ni,ni->n', h_orth, h_orth) / 4.0   # sin²θ/λ² = 1/(4d²)
+
+    valid = (r > 0.001) & (t > 0.001)
+    rv, tv, s2v = r[valid], t[valid], s2[valid]
+
+    p0 = np.array([np.log(max(k0, 1e-10)), 0.0])
+
+    def _residuals(p):
+        S2sq = np.exp(2*p[0]) * np.exp(-2*p[1] * s2v)
+        D1   = 0.5 * (rv**2 - S2sq * tv**2)
+        D2   = 0.5 * (tv**2 - rv**2 / np.maximum(S2sq, 1e-30))
+        return np.concatenate([D1, D2])
+
+    try:
+        res = least_squares(_residuals, p0, method='lm', max_nfev=400)
+        p   = res.x
+    except Exception:
+        p = p0
+
+    k_fit = float(np.exp(p[0]))
+    B_fit = float(p[1])              # effective B; scaleit prints 4×this
+    print("scale_mtz: k=%.4f  B_eff=%.2f A^2  B_scaleit=%.2f A^2  (mode=%s)" % (
+        k_fit, B_fit, 4*B_fit, mode))
+
+    if mode == 'fit_scaleB_use_scale':
+        return k_fit
+
+    # ── fit_scaleB_use_scaleB: per-reflection scale for all target reflections
+    hkl_all = np.array(tgt_arr.indices())
+    h_all   = hkl_all.astype(float) @ M_frac
+    s2_all  = np.einsum('ni,ni->n', h_all, h_all) / 4.0
+    return k_fit * np.exp(-B_fit * s2_all)
 
 
 def _looks_like_fobs(label_string):
