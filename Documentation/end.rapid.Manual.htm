@@ -1,9 +1,9 @@
-<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN"
-"http://www.w3.org/TR/html4/loose.dtd">
+<!DOCTYPE html>
 <html>
 <head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>END/RAPID Manual</title>
-<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
 <style type="text/css">
 <!--
 .style1 {
@@ -43,12 +43,12 @@
   P. Therese Lang<br>
   James Holton<br>
   James Fraser<br>
-    Tom Alber<br>
-    <img src="../map.jpg" width="166" height="149"><br><br>
-  Last updated December 2013</p>
+  <a href="https://senate.universityofcalifornia.edu/in-memoriam/files/thomas-c-alber.html">Tom Alber</a><br>
+  <img src="../map.jpg" width="166" height="149"><br><br>
+  Last updated June 2026</p>
   <hr>
   <p class="style1"><a name="TOC"></a><strong>Table of Contents</strong></p>
-  <p class="style4"><a href="http://ucxray.berkeley.edu/~terry/endrapidSite/end.rapid.htm">RETURN TO MAIN PAGE </a></p>
+  <p class="style4"><a href="../index.html">RETURN TO MAIN PAGE</a></p>
   <p class="style5"><a href="#Introduction">1. Introduction</a></p>
   <blockquote>
     <p class="style5"><a href="#WhyMaps">1.1. Why use absolute-scale and noise maps?</a></p>
@@ -56,8 +56,9 @@
   </blockquote>
   <p class="style5"><a href="#InstallationInstructions">2. Installation Instructions</a></p>
   <p class="style5"><a href="#OverviewofEndRapid">3. Overview of END and RAPID</a></p>
-  <p class="style5"><a href="#RunningRinger">4. Running END_RAPID.com</a></p>
+  <p class="style5"><a href="#RunningRinger">4. Running END_RAPID</a></p>
   <blockquote>
+    <p class="style5"><a href="#RunningRinger">4.0. Shell version vs. Python port</a></p>
     <p class="style5"><a href="#Commandlinearguments">4.1. Command-line arguments</a></p>
     <p class="style5"><a href="#Fileformats">4.2. File formats</a></p>
     <p class="style5"><a href="#BeyondEndRapid">4.3. Beyond END and RAPID</a></p>
@@ -68,12 +69,12 @@
   <p class="style5"><a name="WhyMaps" id="WhyMaps"></a><strong>1.1. Why use absolute-scale and noise maps?</strong></p>
   <blockquote>
     <p class="style2">Electron density maps are contoured on a relative scale because X-ray crystallographic  diffraction experiments cannot measure a key, forward-scattered reflection that  is swamped by the transmitted beam. The structure factor of this reflection, F<sub>000</sub>,  is equal to the total number of electrons in the unit cell, including the  contribution from disordered solvent. Because crystals differ in  composition, the absence of F<sub>000</sub> puts each map on a different scale.  The standard practice to circumvent this limitation is to represent electron  density in relative units of the root mean square (RMS) deviation of map values  from the mean density. These &ldquo;&sigma;-scaled&rdquo; maps are  sufficient for structural modeling, but it is difficult to determine which  density features are signal versus noise because the &sigma; unit has little to do  with the uncertainty in the electron density. It is also impossible to  quantitatively compare features in different maps, because the scale and offset  relating &sigma; to the absolute electron density varies among crystals of different  molecules or even of the same molecular species with different symmetries or  crystallization solvents.</p>
-    <p class="style2"> To overcome this classic limitation,  we developed a general computational method to calculate F<sub>000</sub> and  render maps on an absolute scale of electron number density (END) in units of  electrons per cubic angstrom (e-/A<sup>3</sup>). END maps were calculated by scaling the experimental  structure factors (F<sub>obs</sub>) to structure factors calculated from the  model (F<sub>calc</sub>, which are intrinsically on an absolute scale) and  adding the average electron density of the crystal (including bulk solvent and  the ordered model) to each map voxel. In contrast  to &sigma;-scaled maps, where zero corresponds to the average electron density, in END  maps, zero corresponds to vacuum. </p>
+    <p class="style2"> To overcome this classic limitation,  we developed a general computational method to calculate F<sub>000</sub> and  render maps on an absolute scale of electron number density (END) in units of  electrons per cubic angstrom (e&#x207B;/&#x212B;<sup>3</sup>). END maps were calculated by scaling the experimental  structure factors (F<sub>obs</sub>) to structure factors calculated from the  model (F<sub>calc</sub>, which are intrinsically on an absolute scale) and  adding the average electron density of the crystal (including bulk solvent and  the ordered model) to each map voxel. In contrast  to &sigma;-scaled maps, where zero corresponds to the average electron density, in END  maps, zero corresponds to vacuum. </p>
     <p class="style2"> With the electron density maps on an  absolute scale, we searched for an approximate electron density threshold to  distinguish signal from noise. The noise level at every position in the unit cell was determined by  empirically propagating errors from the structure factors into the electron  density map. In this general, analytical approach, which we call refinement  against perturbed input data (RAPID), errors in the experimental measurements  (&sigma;(F<sub>obs</sub>)) or the model (|F<sub>obs</sub>-F<sub>calc</sub>|)  were used to add simulated noise to Fobs before re-refining the  structure. Over several trials using different random number seeds, the RMS  change in electron density observed at each point in the map in response to the  changes in F<sub>obs</sub> was used to calculate a &ldquo;RAPID map&rdquo; of the spatial distribution  of errors in the electron density. </p>
     <p class="style2">We find that noise varies with position and is  generally 6-8 times lower than thresholds currently used in model building.  Analyzing the new electron density maps from 485 representative proteins  revealed unmodeled conformations above the noise for 45% of side chains and a  previously hidden, low-occupancy inhibitor of HIV capsid protein. Comparing the  electron density maps in the free and nucleotide-bound structures of three human  protein kinases suggested that substrate binding perturbs distinct intrinsic  allosteric networks that link the active site to surfaces that recognize  regulatory proteins. These results illustrate general approaches to identify  and analyze alternative conformations, low-occupancy small molecules, solvent  distributions, communication pathways and protein motions.</p>
   </blockquote>
   
-  <p class="style5"><a name="Utility"></a><stong>1.2. What can END and RAPID do for you?</strong></p>
+  <p class="style5"><a name="Utility"></a><strong>1.2. What can END and RAPID do for you?</strong></p>
   <blockquote>
     <p class="style2">Analyzing the  new electron density maps from 485 representative proteins revealed unmodeled  conformations above the noise for 45% of side chains and a previously hidden,  low-occupancy inhibitor of HIV capsid protein. Comparing the electron density  maps in the free and nucleotide-bound structures of three human protein kinases  suggested that substrate binding perturbs distinct intrinsic allosteric  networks that link the active site to surfaces that recognize regulatory  proteins. END and  RAPID maps enable a unified, quantitative interpretation of electron density  that reveals not only low-occupancy ligands, but also dynamic structural  features and alternative solvent constellations. By analogy to the  Beer&ndash;Lambert&ndash;Bouguer Law in spectroscopy, which defines the relationship  between molecular concentration and optical absorbance, END maps report the  concentration of scattering electrons at each point in space. A  current challenge remains to automatically model alternative conformations .  This new information about structural distributions in crystals increases the  power of x-ray crystallography to facilitate inhibitor development, visualize  structural ensembles and connect macromolecular motions to functions. These  capabilities open windows into biologically relevant information not included in  current x-ray structural models.  </p>
   </blockquote>
@@ -81,39 +82,44 @@
   <hr>
   
   <p align="center" class="style3"><a name="InstallationInstructions"></a><strong>Installation Instructions</strong></p>
-  <p class="style2">1) END and RAPID are dependent on the external programs CCP4 and Phenix. Go to their respective websites (<a href="http://www.ccp4.ac.uk/">http://www.ccp4.ac.uk/</a> and <a href="http://www.phenix-online.org/">    http://www.phenix-online.org/</a>) and follow the installation instructions.</p>
+  <p class="style2">The recommended installation method is to clone the GitHub repository, which includes both the shell scripts and the Python port:</p>
   <blockquote>
-    <p class="style2">NOTE: END and RAPID were tested extensively with Phenix version 1.6.1 and 1.6.4, and less extensively up to version 1.8.4.  The current distribution has been validated with Phenix 2.1 and CCP4 9.0 (May 2026).  Phenix 2.x eff files contain a <tt>ddr&nbsp;{&nbsp;}</tt> parameter block not present in older versions; <tt>END_RAPID.com</tt> strips this block automatically before calling <tt>phenix.refine</tt>, so no manual editing of the eff file is needed.</p>
+    <p class="style2">git clone https://github.com/jmholton/END-RAPID</p>
   </blockquote>
-  <p class="style2">2) Save the distribution in the directory you want it installed in. Unpack the distribution using the following command:</p>
+  <p class="style2">Alternatively, download the tarball: <a href="../Distributions/end.rapid.tar.gz">end.rapid.tar.gz</a></p>
   <blockquote>
     <p class="style2">[user@density ~] tar -zxvf end.rapid.tar.gz</p>
   </blockquote>
-  <p class="style2">3) The directory needs to be added to your path. Add the apropriate line to either your .tcshrc, .cshrc, or .bashrc path. For example:</p>
+  <p class="style2">1) END and RAPID depend on external programs. The shell version (<tt>END_RAPID.com</tt>) requires both CCP4 and Phenix. The Python port (<tt>END_RAPID.py</tt>) requires only Phenix (no CCP4). Download from their respective websites:</p>
+  <blockquote>
+    <p class="style2"><a href="https://www.ccp4.ac.uk/">CCP4 Software Suite</a> and <a href="https://www.phenix-online.org/">Phenix</a> (freely available to academics)</p>
+    <p class="style2">NOTE: Validated with Phenix 2.1 and CCP4 9.0 (June 2026). Phenix 2.x eff files contain a <tt>ddr&nbsp;{&nbsp;}</tt> parameter block not present in older versions; <tt>END_RAPID.com</tt> strips this block automatically before calling <tt>phenix.refine</tt>, so no manual editing of the eff file is needed.</p>
+  </blockquote>
+  <p class="style2">2) Add the <tt>end.rapid/</tt> directory to your path. For example:</p>
   <blockquote>
     <p class="style2"><em>Using tcsh or csh</em></p>
     <blockquote>
-      <p class="style2">set path = (/alber/terry/end.rapid $path)</p>
+      <p class="style2">set path = (/path/to/END-RAPID/end.rapid $path)</p>
     </blockquote>
     <p class="style2"><em>Using bash</em></p>
     <blockquote>
-      <p class="style2">$PATH='/alber/terry/end.rapid/':$PATH</p>
+      <p class="style2">export PATH='/path/to/END-RAPID/end.rapid':$PATH</p>
     </blockquote>
   </blockquote>
-  <p class="style2">4)  The code may need to be made executable to run.  If you type END_RAPID.com and you get an error message, go into the directory and type the following command: </p>
+  <p class="style2">3) The scripts may need to be made executable. If you get a &ldquo;command not found&rdquo; or &ldquo;permission denied&rdquo; error, run:</p>
   <blockquote>
     <blockquote>
-      <p class="style2">[user@density ~] chmod +x *</p>
+      <p class="style2">[user@density ~] chmod +x END-RAPID/end.rapid/*</p>
     </blockquote>
   </blockquote>
   <p class="style4"><a href="#TOC" class="style4">RETURN TO TABLE OF CONTENTS</a></p>
-  <p class="style4"><a href="http://ucxray.berkeley.edu/~terry/endrapidSite/end.rapid.htm">RETURN TO MAIN PAGE </a></p>
+  <p class="style4"><a href="../index.html">RETURN TO MAIN PAGE</a></p>
   <hr>
   
   <p align="center" class="style3"><a name="OverviewofEndRapid"></a><strong>Overview of END and RAPID Maps</strong></p>
   <blockquote>
-    <p class="style2"> END and RAPID maps are general methods to solve two classic crystallographic problems�putting electron density maps on the absolute scale of e-/�<sup>3</sup> and calculating the noise at every point in the map. These methods allow crystallographers to differentiate signal from noise and directly compare between electron density from different maps.  With these maps, we can identify and analyze alternative conformations, low-occupancy small molecules, solvent distributions, communication pathways and protein motions. (<a href="http://www.ncbi.nlm.nih.gov/pubmed/20124702">1</a>)</p>
-    <p class="style2"><strong>Estimation of F<sub>000</sub> for END maps.</strong> F<sub>000</sub> iss obtained by summing the  total number of electrons in the coordinate model and the bulk solvent. An  absolute scale-and-offset map for the coordinate model is obtained using the ATMMAP mode of SFALL from the CCP4 Suite (<a href="#Ref2">2</a>). The mean value of this map is &lt;&rho;<sub>atoms</sub>&gt;.&nbsp; The structure factors of the bulk solvent mask from phenix.refine (<a href="#Ref3">3</a>) were used to estimate &lt;&rho;<sub>bulk</sub>&gt;. </p>
+    <p class="style2"> END and RAPID maps are general methods to solve two classic crystallographic problems&mdash;putting electron density maps on the absolute scale of e-/&mdash;<sup>3</sup> and calculating the noise at every point in the map. These methods allow crystallographers to differentiate signal from noise and directly compare between electron density from different maps.  With these maps, we can identify and analyze alternative conformations, low-occupancy small molecules, solvent distributions, communication pathways and protein motions. (<a href="http://www.ncbi.nlm.nih.gov/pubmed/20124702">1</a>)</p>
+    <p class="style2"><strong>Estimation of F<sub>000</sub> for END maps.</strong> F<sub>000</sub> is obtained by summing the  total number of electrons in the coordinate model and the bulk solvent. An  absolute scale-and-offset map for the coordinate model is obtained using the ATMMAP mode of SFALL from the CCP4 Suite (<a href="#Ref2">2</a>). The mean value of this map is &lt;&rho;<sub>atoms</sub>&gt;.&nbsp; The structure factors of the bulk solvent mask from phenix.refine (<a href="#Ref3">3</a>) were used to estimate &lt;&rho;<sub>bulk</sub>&gt;. </p>
     <p align="center"><img src="proc1.JPG" width="312" height="215"><br>
     <p class="style2">The  histogram of the density from these structure factors (dark blue) has a mean value of zero and two peaks&mdash;one above the mean, corresponding to solvent, and one below the  mean, corresponding to vacuum. The shift required to move the negative peak to 0.0 (cyan), the true vacuum level, is &lt;&rho;<sub>bulk</sub>&gt; (black dashed). To obtain  the END map, &ldquo;volume scale&rdquo; map coefficients were specified from phenix.refine (<a href="#Ref3">3</a>) and the quantity &lt;&rho;<sub>atoms</sub>&gt;+&lt;&rho;<sub>bulk</sub>&gt; was added to each voxel of the resulting 2mF<sub>o</sub>-DF<sub>c</sub> map.</p>
     <p class="style2"><strong>RAPID maps</strong>.  The error in electron density, &sigma;(&rho;), arises from measurement errors &sigma;(F<sub>obs</sub>) and modeling errors (F<sub>obs</sub> vs. F<sub>calc</sub>). The contribution from phase  error was defined as the change in the phase from a refined model in response  to a change in target amplitude (F<sub>obs</sub>). Absolute-scale values of F<sub>obs</sub>,  &sigma;(F<sub>obs</sub>) and F<sub>calc</sub> were obtained from the phenix.refine  (<a href="#Ref3">3</a>) run used to generate the END map. F<sub>obs</sub> was perturbed using SFTOOLS  in the CCP4 suite (<a href="#Ref2">2</a>) using the following formula,<br></p>
@@ -127,14 +133,25 @@
   </blockquote>
   
   <p class="style4"><a href="#TOC">RETURN TO TABLE OF CONTENTS</a></p>
-  <p class="style4"><a href="http://ucxray.berkeley.edu/~terry/endrapidSite/end.rapid.htm">RETURN TO MAIN PAGE </a></p>
+  <p class="style4"><a href="../index.html">RETURN TO MAIN PAGE</a></p>
   <hr>
   
-  <p class="style3" align="center"><a name="RunningRinger"></a><strong>Running END_RAPID.com </strong>  </p>
+  <p class="style3" align="center"><a name="RunningRinger"></a><strong>Running END_RAPID</strong></p>
+  <p class="style5">4.0. Shell version vs. Python port</p>
+  <blockquote>
+    <p class="style2">Two implementations are available. Both produce equivalent output:</p>
+    <ul class="style2">
+      <li><strong>Shell version (<tt>END_RAPID.com</tt>)</strong> &mdash; the original, production-tested tcsh script. Requires CCP4 and Phenix. Fastest for large structures.</li>
+      <li><strong>Python port (<tt>END_RAPID.py</tt>)</strong> &mdash; a pure-Python reimplementation using phenix.python/cctbx. Requires only Phenix (no CCP4). Output maps cover the full unit cell rather than the ASU; values are identical.</li>
+    </ul>
+    <p class="style2">Usage (Python port):<br>
+      [users@density ~] phenix.python END_RAPID.py phenixrefine.eff [cycles=n seeds=n cpus=n -nofofc -nosigf -norapid]</p>
+    <p class="style2">The Python port is available in the GitHub repository: <a href="https://github.com/jmholton/END-RAPID">https://github.com/jmholton/END-RAPID</a></p>
+  </blockquote>
   <p class="style5"><a name="Commandlinearguments"></a>4.1. Command-line arguments</p>
   <blockquote>
-    <p class="style2">END_RAPID.com must be run from the command line. </p>
-    <p class="style2">USAGE:<br> 
+    <p class="style2">END_RAPID.com (and END_RAPID.py) must be run from the command line.</p>
+    <p class="style2">USAGE:<br>
       [users@density ~] END_RAPID.com phenixrefine.eff [cycles=n seeds=n cpus=n -nofofc -nosigf -norapid]</p>
     <p class="style2">OPTIONS:</p>
     <blockquote>
@@ -161,15 +178,15 @@
 
   <p align="left" class="style5"><strong><a name="BeyondEndRapid" id="BeyondEndRapid"></a></strong>4.3. Beyond END and RAPID</p>
   <blockquote>
-    <p align="left" class="style2">New signal revealed by END and RAPID maps currently require manual inspection and building of alternate conformers. We suggest using END and RAPID toward the end of model building and occupancy refinement to help finalize low density features. Tools like <a href="http://ucxray.berkeley.edu/~terry/ringerSite/ringer.htm">Ringer</a> can be used to help in identifying where alternate conformations might be located. New structure added to the model as a result of END map density should be validated by small improvements in map quality and interpretability, real space correlation coefficients between Fc and Fobs, the consistency of B values and R/Rfree values. </p>
+    <p align="left" class="style2">New signal revealed by END and RAPID maps currently requires manual inspection and building of alternate conformers. We suggest using END and RAPID toward the end of model building and occupancy refinement to help finalize low-density features. Tools like <a href="http://bl831.als.lbl.gov/ringer/ringer.htm">Ringer</a> can be used to help identify where alternate conformations might be located. New structure added to the model as a result of END map density should be validated by small improvements in map quality and interpretability, real space correlation coefficients between Fc and Fobs, the consistency of B values and R/Rfree values. </p>
   </blockquote>
   <p class="style4"><a href="#TOC">RETURN TO TABLE OF CONTENTS</a> </p>
   <hr>
   
   <p class="style1"><a name="References"></a><strong>References</strong></p>
-  <p class="style2"><a name="Ref1"></a>1.  Lang PT, Holton JM, Fraser JS, Alber T. Protein structural ensembles are revealed by redefining x-ray eletron density noise. <em>PNAS USA</em>. <b>111</b> 237-247</p>
+  <p class="style2"><a name="Ref1"></a>1. Lang PT, Holton JM, Fraser JS, Alber T. Protein structural ensembles are revealed by redefining X-ray electron density noise. <em>PNAS USA</em>. <b>111</b>:237&ndash;247 (2014).</p>
   <p class="style2"><a name="Ref2"></a>2. Winn MD, Ballard CC, Cowtan KD, Dodson EJ, Emsley P, Evans PR, Keegan RM, Krissinel EB, Leslie AG, McCoy A, McNicholas SJ, Murshudov GN, Pannu NS, Potterton EA, Powell HR, Read RJ, Vagin A, Wilson KS. <a href="http://www.ncbi.nlm.nih.gov/pubmed/21460441">Overview of the CCP4 suite and current developments</a>. <em>Acta Cryst D.</em><span class="style21"> 2011 Apr; 67 (Pt 4):235-42.</p>
-  <p class="style2"><a name="Ref3"></a>3. Adams PD, Afonine PV, Bunk&oacute;czi G, Chen VB, Davis IW, Echols N, Headd JJ, Hung LW, Kapral GJ, Grosse-Kunstleve RW, McCoy AJ, Moriarty NW, Oeffner R, Read RJ, Richardson DC, Richardson JS, Terwilliger TC, Zwart PH. <a href="http://www.ncbi.nlm.nih.gov/pubmed/20124702">PHENIX: a comprehensive Python-based system for macromolecular structure solution.</a> <em>Acta Cryst D</em>. 2010 Feb;66(Pt 2):213-21. </p>
+  <p class="style2"><a name="Ref3"></a>3. Adams PD, Afonine PV, Bunk&oacute;czi G, Chen VB, Davis IW, Echols N, Headd JJ, Hung LW, Kapral GJ, Grosse-Kunstleve RW, McCoy AJ, Moriarty NW, Oeffner R, Read RJ, Richardson DC, Richardson JS, Terwilliger TC, Zwart PH. <a href="https://pubmed.ncbi.nlm.nih.gov/20124702/">PHENIX: a comprehensive Python-based system for macromolecular structure solution.</a> <em>Acta Cryst D</em>. 2010 Feb;66(Pt 2):213&ndash;21. See also: <a href="https://www.phenix-online.org/">phenix-online.org</a> for current releases.</p>
   <p class="style4"><a href="#TOC">RETURN TO TABLE OF CONTENTS</a> </p>
 </div>
 </body>
