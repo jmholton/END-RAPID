@@ -182,19 +182,37 @@ def scale_mtz(ref_mtz, ref_label, target_mtz, target_label,
     # Initial k: sqrt(sum(ref²)/sum(tgt²)) — scaleit's initial scale formula
     k0 = float(np.sqrt(np.sum(r**2) / max(np.sum(t**2), 1e-12)))
 
+    from scipy.optimize import least_squares
+    valid = (r > 0.001) & (t > 0.001)
+    rv, tv = r[valid], t[valid]
+
     if mode == 'fit_scale_use_scale':
-        return k0
+        # Mirrors scaleit "refine scale" (LSCALE=1): same D1/D2 intensity
+        # residuals but with B=0 (scale-only, no resolution dependence).
+        # The initial k (sqrt formula) is 1.035 but after iteration scaleit
+        # converges to a different k (e.g. 1.145); this matches that behaviour.
+        p0 = np.array([np.log(max(k0, 1e-10))])
+        def _res_scale(p):
+            ksq = np.exp(2*p[0])
+            D1  = 0.5 * (rv**2 - ksq * tv**2)
+            D2  = 0.5 * (tv**2 - rv**2 / np.maximum(ksq, 1e-30))
+            return np.concatenate([D1, D2])
+        try:
+            res = least_squares(_res_scale, p0, method='lm', max_nfev=400)
+            k_fit = float(np.exp(res.x[0]))
+        except Exception:
+            k_fit = k0
+        print("scale_mtz: k=%.4f  (mode=fit_scale_use_scale)" % k_fit)
+        return k_fit
 
     # ── isotropic k+B fit (scaleit refine isotropic, NOWT=1 unweighted) ──────
-    from scipy.optimize import least_squares
     cs     = ref_arr.crystal_symmetry()
     M_frac = np.array(cs.unit_cell().fractionalization_matrix()).reshape(3, 3)
     hkl    = np.array(common_t.indices())
     h_orth = hkl.astype(float) @ M_frac
     s2     = np.einsum('ni,ni->n', h_orth, h_orth) / 4.0   # sin²θ/λ² = 1/(4d²)
 
-    valid = (r > 0.001) & (t > 0.001)
-    rv, tv, s2v = r[valid], t[valid], s2[valid]
+    s2v = s2[valid]
 
     p0 = np.array([np.log(max(k0, 1e-10)), 0.0])
 
@@ -676,9 +694,12 @@ def main(args):
     baseline_sig = math.sqrt(0 + solvent_sig**2)
     SIGF000 = vol * baseline_sig
 
-    # Scale map coefficients: scaleit(fmodel vs 2FOFCWT)
+    # Scale map coefficients: scaleit refine scale (no B-factor) for the
+    # reference map, matching the shell's "scaleit refine scale" step.
+    # Seeds use fit_scaleB_use_scale (default); reference uses fit_scale_use_scale.
     print("putting map coefficients on absolute scale")
-    map_scale_factor = scale_mtz('fmodel.mtz', 'FMODEL', mtzfile, '2FOFCWT')
+    map_scale_factor = scale_mtz('fmodel.mtz', 'FMODEL', mtzfile, '2FOFCWT',
+                                 mode='fit_scale_use_scale')
     if no_scale:
         print("but no scaling will be applied.")
         map_scale_factor = 1.0
